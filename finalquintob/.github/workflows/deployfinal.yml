@@ -35,7 +35,17 @@ jobs:
         push: true
         tags: ghcr.io/padme2003/salchi:2.0.0
         
-    - name: 🔌 Prueba de conexión SSH con el servidor
+    - name: 📦 Copiar stack.yml al VPS (SCP)
+      uses: appleboy/scp-action@v1
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        password: ${{ secrets.VPS_PASSWORD }}
+        port: ${{ secrets.VPS_SSH_PORT }}
+        source: "finalquintob/stack.yml"
+        target: "/home/${{ secrets.VPS_USER }}/finalquintob"
+
+    - name: 🚀 Deploy con eliminación del stack
       uses: appleboy/ssh-action@v1
       with:
         host: ${{ secrets.VPS_HOST }}
@@ -43,9 +53,23 @@ jobs:
         username: ${{ secrets.VPS_USER }}
         password: ${{ secrets.VPS_PASSWORD }}
         script: |
-          echo "Conexión exitosa desde GitHub Actions"
-          pwd
-          date
-          whoami
-          hostname
-          uptime
+          cd ~/finalquintob
+
+          # Login a GitHub Container Registry
+          echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u padme2003 --password-stdin
+
+          # Descargar la nueva imagen
+          docker pull ghcr.io/padme2003/salchi:2.0.0
+
+          # Borrar el stack SIEMPRE (si no existe no falla)
+          docker stack rm quintob || true
+
+          # Pequeña espera mientras Swarm libera recursos
+          sleep 10
+
+          # Crear el nuevo stack limpio
+          docker stack deploy --with-registry-auth -c stack.yml quintob
+
+          # Estado final del despliegue
+          docker service ls
+          docker stack ps quintob
